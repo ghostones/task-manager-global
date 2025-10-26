@@ -1,43 +1,14 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
+const nodemailer = require('nodemailer');
 const User = require('../models/User');
 const { validateRegistration } = require('../middleware/validate');
 const router = express.Router();
 
 /**
- * @swagger
- * tags:
- *   name: Auth
- *   description: User authentication and management
- */
-
-/**
- * @swagger
- * /api/auth/register:
- *   post:
- *     summary: Register a new user
- *     tags: [Auth]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [name, email, password]
- *             properties:
- *               name: { type: string }
- *               email: { type: string }
- *               password: { type: string }
- *     responses:
- *       200:
- *         description: Registration successful
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message: { type: string }
+ * User Registration
  */
 router.post('/register', validateRegistration, async (req, res) => {
   const { name, email, password } = req.body;
@@ -51,43 +22,7 @@ router.post('/register', validateRegistration, async (req, res) => {
 });
 
 /**
- * @swagger
- * /api/auth/login:
- *   post:
- *     summary: User login
- *     tags: [Auth]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [email, password]
- *             properties:
- *               email: { type: string }
- *               password: { type: string }
- *     responses:
- *       200:
- *         description: Login successful, returns JWT and user info
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 token: { type: string }
- *                 user:
- *                   type: object
- *                   properties:
- *                     name: { type: string }
- *                     email: { type: string }
- *                     _id: { type: string }
- *       400:
- *         description: Invalid credentials
- *         content:
- *           application/json:
- *             schema:
- *               properties:
- *                 message: { type: string }
+ * User Login
  */
 router.post('/login', async (req, res) => {
   const { email, password } = req.body;
@@ -100,6 +35,59 @@ router.post('/login', async (req, res) => {
     { expiresIn: '2h' }
   );
   res.json({ token, user: { name: user.name, email: user.email, _id: user._id } });
+});
+
+/**
+ * Forgot Password
+ */
+router.post('/forgot-password', async (req, res) => {
+  const { email } = req.body;
+  const user = await User.findOne({ email });
+  if (!user) return res.status(400).json({ message: 'No user found with that email.' });
+
+  // Create a reset token
+  const resetToken = crypto.randomBytes(32).toString('hex');
+  user.resetPasswordToken = resetToken;
+  user.resetPasswordExpires = Date.now() + 3600000; // 1 hour
+  await user.save();
+
+  // Set up Nodemailer with your SMTP settings (use real SMTP in prod)
+  const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      user: process.env.SMTP_EMAIL,
+      pass: process.env.SMTP_PASS
+    }
+  });
+
+  const resetURL = `https://your-frontend-url/reset-password?token=${resetToken}&email=${encodeURIComponent(email)}`;
+  await transporter.sendMail({
+    to: user.email,
+    subject: 'Reset your password',
+    html: `<p>Click <a href="${resetURL}">this link</a> to reset your password. Link valid for 1 hour.</p>`
+  });
+
+  res.json({ message: 'Password reset link sent. Check your email.' });
+});
+
+/**
+ * Reset Password
+ */
+router.post('/reset-password', async (req, res) => {
+  const { email, token, password } = req.body;
+  const user = await User.findOne({
+    email,
+    resetPasswordToken: token,
+    resetPasswordExpires: { $gt: Date.now() }
+  });
+  if (!user) return res.status(400).json({ message: 'Invalid or expired token.' });
+
+  user.password = await bcrypt.hash(password, 10);
+  user.resetPasswordToken = undefined;
+  user.resetPasswordExpires = undefined;
+  await user.save();
+
+  res.json({ message: 'Password updated successfully!' });
 });
 
 module.exports = router;
