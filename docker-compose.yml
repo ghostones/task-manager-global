@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  mongo:
+    image: mongo:6
+    container_name: outfitbloom-mongo
+    restart: unless-stopped
+    ports:
+      - 27017:27017
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ghostones_db_user
+      MONGO_INITDB_ROOT_PASSWORD: Ameyaa123
+      MONGO_INITDB_DATABASE: outfitbloom
+    volumes:
+      - mongodata:/data/db
+
+  backend:
+    build: .
+    container_name: outfitbloom-backend
+    restart: unless-stopped
+    ports:
+      - 5001:5001
+    depends_on:
+      - mongo
+    env_file:
+      - .env
+    environment:
+      MONGODB_URI: "mongodb://ghostones_db_user:Ameyaa123@mongo:27017/outfitbloom?authSource=admin"
+      JWT_SECRET: "outfitbloom_jwt_verysecret_123456"
+      CLOUDINARY_CLOUD_NAME: "dv9oie8is"
+      CLOUDINARY_API_KEY: "538372572649437"
+      CLOUDINARY_API_SECRET: "9c6YL702YeSW9DZ2TCASk4W8_PY"
+      RAZORPAY_KEY_ID: "rzp_test_RXZUibpfjVmswT"
+      RAZORPAY_KEY_SECRET: "3BAvRTSn2tKyHNLpT1sTlk7o"
+      STRIPE_SECRET_KEY: "sk_test_yourkey"
+      EXCHANGE_API_KEY: "f94b5fd8aa338c6bed565ba2"
+      PORT: 5001
+      NODE_ENV: production
+    # Remove below line if you want to use only env_file
+    # The above environment block ensures .env values get picked up even if they're also defined in env_file.
+
+volumes:
+  mongodata:
